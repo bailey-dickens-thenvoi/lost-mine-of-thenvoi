@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.tools.world_state import WorldStateManager
 
 from src.game.models import EnemyState
 from src.tools.dice import roll_dice, roll_initiative, check_hit
-from src.tools.world_state import WorldStateManager
 
 logger = logging.getLogger(__name__)
 

@@ -25,6 +25,15 @@ from src.game.models import (
     NPCState,
     WorldState,
 )
+from src.game.npcs import (
+    format_npc_prompt,
+    format_npc_prompt_custom,
+    get_alive_npcs,
+    get_npc,
+    get_npc_names,
+    get_npcs_at_location,
+    load_npc_data,
+)
 
 __all__ = [
     # Combat
@@ -50,4 +59,12 @@ __all__ = [
     "NarrativeProgress",
     "NPCState",
     "WorldState",
+    # NPCs
+    "format_npc_prompt",
+    "format_npc_prompt_custom",
+    "get_alive_npcs",
+    "get_npc",
+    "get_npc_names",
+    "get_npcs_at_location",
+    "load_npc_data",
 ]

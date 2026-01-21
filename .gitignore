@@ -71,6 +71,7 @@ venv.bak/
 
 # Project specific
 data/*.json
+!data/npcs.json
 !data/.gitkeep
 *.log
 

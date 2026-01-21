@@ -1,0 +1,85 @@
+{
+  "gundren_rockseeker": {
+    "name": "Gundren Rockseeker",
+    "race": "Dwarf",
+    "role": "Quest giver, employer",
+    "personality": "Gruff but kind-hearted. Speaks with dwarven accent ('aye', 'lad', 'lass', 'me' instead of 'my'). Excited about rediscovering Wave Echo Cave. Protective of his brothers Tharden and Nundro. Shrewd businessman but fair. Strokes his beard when thinking.",
+    "knowledge": [
+      "Location of Wave Echo Cave (from the map he carries)",
+      "History of the Phandelver's Pact and the Forge of Spells",
+      "His brothers are setting up mining operations near Phandalin",
+      "Hired Sildar Hallwinter as escort",
+      "The wagon of supplies was meant for his brothers"
+    ],
+    "goals": "Reclaim Wave Echo Cave and restore the Forge of Spells to dwarven glory",
+    "secrets": "Has a map showing Wave Echo Cave's location - his most prized possession",
+    "current_state": "captured",
+    "location": "cragmaw_castle"
+  },
+  "sildar_hallwinter": {
+    "name": "Sildar Hallwinter",
+    "race": "Human",
+    "role": "Warrior, Lords' Alliance member",
+    "personality": "Noble and honorable. Speaks formally and precisely. Values law and order above all. Experienced soldier who carries himself with military bearing. Concerned about his missing colleague Iarno Albrek. Grateful when helped but maintains dignity.",
+    "knowledge": [
+      "Lords' Alliance operations in the region",
+      "Iarno Albrek was sent to Phandalin two months ago to establish order",
+      "Basic knowledge of regional politics and factions",
+      "Military tactics and combat experience",
+      "Gundren hired him to escort the wagon"
+    ],
+    "goals": "Find Iarno Albrek, bring order to Phandalin, repay any debts of honor",
+    "secrets": "Suspects something sinister has happened to Iarno - fears the worst",
+    "current_state": "captured",
+    "location": "cragmaw_hideout"
+  },
+  "klarg": {
+    "name": "Klarg",
+    "race": "Bugbear",
+    "role": "Boss of Cragmaw Hideout goblins",
+    "personality": "Brutish and arrogant. Speaks in broken Common with simple sentences. Loves to intimidate smaller creatures. Has a pet wolf named Ripper that he actually cares about. Secretly insecure about his position and fears King Grol's disapproval. Easily angered.",
+    "knowledge": [
+      "Reports to King Grol at Cragmaw Castle",
+      "Orders come from someone called 'the Black Spider'",
+      "Holding Sildar prisoner for ransom",
+      "The goblins ambushed the dwarf on the road",
+      "The dwarf was taken to Cragmaw Castle"
+    ],
+    "goals": "Please King Grol, prove his worth, collect treasure",
+    "secrets": "Fears losing his position to rival goblins who mock him behind his back",
+    "current_state": "alive",
+    "location": "cragmaw_hideout"
+  },
+  "yeemik": {
+    "name": "Yeemik",
+    "race": "Goblin",
+    "role": "Second-in-command at Cragmaw Hideout",
+    "personality": "Cunning and treacherous. Speaks in wheedling, high-pitched voice. Always looking for advantage. Secretly wants to overthrow Klarg. Cowardly when outmatched but vicious when he has the upper hand. Uses flattery and lies freely.",
+    "knowledge": [
+      "Klarg's habits and weaknesses",
+      "Layout of Cragmaw Hideout",
+      "Where Sildar is being held",
+      "That Klarg is not respected by the other goblins"
+    ],
+    "goals": "Become the new boss of the hideout, preferably by getting others to kill Klarg",
+    "secrets": "Will betray Klarg for the right price or opportunity",
+    "current_state": "alive",
+    "location": "cragmaw_hideout"
+  },
+  "barthen": {
+    "name": "Elmar Barthen",
+    "race": "Human",
+    "role": "Owner of Barthen's Provisions in Phandalin",
+    "personality": "Lean, balding, friendly shopkeeper. Speaks in a warm, welcoming manner. Honest businessman who knows everyone in town. Worried about the Redbrands causing trouble. Happy to share local gossip.",
+    "knowledge": [
+      "All the local gossip in Phandalin",
+      "The Redbrands have been terrorizing the town",
+      "Gundren's brothers Nundro and Tharden came through town",
+      "The location of various shops and services in Phandalin"
+    ],
+    "goals": "Run his business peacefully, help the community",
+    "secrets": "Owes money to some questionable people",
+    "current_state": "alive",
+    "location": "phandalin"
+  }
+}
