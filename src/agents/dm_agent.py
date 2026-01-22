@@ -136,6 +136,7 @@ class DMAdapter(AnthropicAdapter):
         self,
         state_manager: WorldStateManager | None = None,
         model: str = "claude-sonnet-4-5-20250929",
+        anthropic_api_key: str | None = None,
         **kwargs,
     ):
         """Initialize the DM adapter.
@@ -143,6 +144,7 @@ class DMAdapter(AnthropicAdapter):
         Args:
             state_manager: WorldStateManager instance (creates default if None)
             model: Claude model to use
+            anthropic_api_key: Anthropic API key (required)
             **kwargs: Additional arguments for AnthropicAdapter
         """
         self.state_manager = state_manager or get_world_state_manager()
@@ -154,6 +156,7 @@ class DMAdapter(AnthropicAdapter):
         super().__init__(
             model=model,
             system_prompt=system_prompt,
+            anthropic_api_key=anthropic_api_key,
             enable_execution_reporting=True,
             **kwargs,
         )
@@ -522,13 +525,19 @@ async def run_dm_agent() -> None:
     if not settings.dm_agent_id or not settings.dm_api_key:
         raise ValueError("DM_AGENT_ID and DM_API_KEY must be set in environment")
 
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY must be set in environment")
+
     logger.info("Starting DM Agent...")
 
     # Create state manager
     state_manager = get_world_state_manager()
 
-    # Create adapter
-    adapter = DMAdapter(state_manager=state_manager)
+    # Create adapter with Anthropic API key from settings
+    adapter = DMAdapter(
+        state_manager=state_manager,
+        anthropic_api_key=settings.anthropic_api_key,
+    )
 
     # Create and run agent
     agent = Agent.create(

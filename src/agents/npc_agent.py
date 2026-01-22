@@ -98,17 +98,20 @@ class NPCAdapter(AnthropicAdapter):
     def __init__(
         self,
         model: str = "claude-sonnet-4-5-20250929",
+        anthropic_api_key: str | None = None,
         **kwargs,
     ):
         """Initialize the NPC adapter.
 
         Args:
             model: Claude model to use
+            anthropic_api_key: Anthropic API key (required)
             **kwargs: Additional arguments for AnthropicAdapter
         """
         super().__init__(
             model=model,
             system_prompt=NPC_SYSTEM_PROMPT,
+            anthropic_api_key=anthropic_api_key,
             enable_execution_reporting=True,
             **kwargs,
         )
@@ -128,10 +131,13 @@ async def run_npc_agent() -> None:
     if not settings.npc_agent_id or not settings.npc_api_key:
         raise ValueError("NPC_AGENT_ID and NPC_API_KEY must be set in environment")
 
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY must be set in environment")
+
     logger.info("Starting NPC Agent...")
 
-    # Create adapter
-    adapter = NPCAdapter()
+    # Create adapter with Anthropic API key from settings
+    adapter = NPCAdapter(anthropic_api_key=settings.anthropic_api_key)
 
     # Create and run agent
     agent = Agent.create(

@@ -280,6 +280,7 @@ class AIPlayerAdapter(AnthropicAdapter):
         personality_section: str,
         combat_priorities: str,
         model: str = "claude-sonnet-4-5-20250929",
+        anthropic_api_key: str | None = None,
         **kwargs,
     ):
         """Initialize the AI player adapter.
@@ -289,6 +290,7 @@ class AIPlayerAdapter(AnthropicAdapter):
             personality_section: Character-specific personality text
             combat_priorities: Character-specific combat priorities
             model: Claude model to use
+            anthropic_api_key: Anthropic API key (required)
             **kwargs: Additional arguments for AnthropicAdapter
         """
         self.character = character
@@ -299,6 +301,7 @@ class AIPlayerAdapter(AnthropicAdapter):
         super().__init__(
             model=model,
             system_prompt=system_prompt,
+            anthropic_api_key=anthropic_api_key,
             enable_execution_reporting=True,
             **kwargs,
         )
@@ -340,9 +343,12 @@ async def run_thokk_agent() -> None:
     if not settings.thokk_agent_id or not settings.thokk_api_key:
         raise ValueError("THOKK_AGENT_ID and THOKK_API_KEY must be set in environment")
 
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY must be set in environment")
+
     logger.info("Starting Thokk (Fighter) Agent...")
 
-    adapter = FighterAdapter()
+    adapter = FighterAdapter(anthropic_api_key=settings.anthropic_api_key)
 
     agent = Agent.create(
         adapter=adapter,
@@ -368,9 +374,12 @@ async def run_lira_agent() -> None:
     if not settings.lira_agent_id or not settings.lira_api_key:
         raise ValueError("LIRA_AGENT_ID and LIRA_API_KEY must be set in environment")
 
+    if not settings.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY must be set in environment")
+
     logger.info("Starting Lira (Cleric) Agent...")
 
-    adapter = ClericAdapter()
+    adapter = ClericAdapter(anthropic_api_key=settings.anthropic_api_key)
 
     agent = Agent.create(
         adapter=adapter,
