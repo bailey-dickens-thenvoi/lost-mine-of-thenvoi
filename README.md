@@ -1,6 +1,6 @@
 # Lost Mine of Thenvoi
 
-A playable Dungeons & Dragons campaign (Lost Mines of Phandelver) powered by multi-agent AI on the Thenvoi platform.
+A playable Dungeons & Dragons campaign (Lost Mine of Phandelver) powered by multi-agent AI on the Thenvoi platform.
 
 ## Overview
 
