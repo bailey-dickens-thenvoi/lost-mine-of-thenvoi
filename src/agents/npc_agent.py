@@ -17,6 +17,7 @@ when active_agent is 'npc' or in free_form mode when addressed.
 from __future__ import annotations
 
 import logging
+import re
 
 from thenvoi import Agent
 from thenvoi.adapters import AnthropicAdapter
@@ -137,6 +138,28 @@ class NPCAdapter(AnthropicAdapter):
             **kwargs,
         )
 
+    def _parse_turn_tag(self, msg: PlatformMessage) -> str | None:
+        """Extract turn target from [TURN:X] tag in message.
+
+        The DM uses [TURN:player_name] tags to explicitly indicate which
+        agent should respond. This is more reliable than the turn_state
+        check because it's embedded directly in the message.
+
+        Args:
+            msg: The platform message to check
+
+        Returns:
+            The player name if found (e.g., "thokk", "lira", "npc", "all"),
+            or None if no tag present.
+        """
+        content = msg.format_for_llm() if hasattr(msg, 'format_for_llm') else str(msg.content)
+        match = re.search(r'\[TURN:(\w+)\]', content, re.IGNORECASE)
+        if match:
+            tag_value = match.group(1).lower()
+            logger.info(f"[TURN_TAG] Detected [TURN:{tag_value}] in message")
+            return tag_value
+        return None
+
     def _count_agent_mentions(self, msg: PlatformMessage) -> int:
         """Count how many known agent names are mentioned in the message.
 
@@ -170,9 +193,15 @@ class NPCAdapter(AnthropicAdapter):
     def should_respond(self, turn_state: TurnState, msg: PlatformMessage | None = None) -> tuple[bool, str]:
         """Check if NPC should respond based on turn state.
 
+        Priority order for determining response:
+        1. Check for [TURN:X] tag in message (highest priority)
+        2. If tag matches "npc" -> RESPOND
+        3. If tag is "all" -> Don't respond (human-only for now)
+        4. If no tag, fall back to existing turn_state check
+
         Args:
             turn_state: Current turn state from world state
-            msg: Optional message to check for multi-mentions
+            msg: Optional message to check for turn tags and multi-mentions
 
         Returns:
             Tuple of (should_respond: bool, reason: str)
@@ -184,30 +213,45 @@ class NPCAdapter(AnthropicAdapter):
             f"addressed={turn_state.addressed_agents}"
         )
 
-        # NEW: Multi-mention suppression - if multiple agents mentioned, this is informational
+        # FIRST: Check for explicit [TURN:X] tag in message
         if msg is not None:
+            turn_tag = self._parse_turn_tag(msg)
+
+            if turn_tag:
+                if turn_tag == self.AGENT_ID:
+                    reason = f"[TURN:{turn_tag}] tag matches my ID"
+                    logger.info(f"[TURN_CHECK] npc: Should respond = True (reason: {reason})")
+                    return True, reason
+                elif turn_tag == "all":
+                    reason = "[TURN:all] - waiting for human (AI support not yet implemented)"
+                    logger.info(f"[TURN_CHECK] npc: Should respond = False (reason: {reason})")
+                    return False, reason
+                else:
+                    reason = f"[TURN:{turn_tag}] tag is for someone else"
+                    logger.info(f"[TURN_CHECK] npc: Should respond = False (reason: {reason})")
+                    return False, reason
+
+            # If no tag, check for multiple mentions (existing rule)
             mentioned_count = self._count_agent_mentions(msg)
             if mentioned_count > 1:
                 reason = f"Multiple agents mentioned ({mentioned_count}) - informational message, not responding"
                 logger.info(f"[TURN_CHECK] npc: Returning False - {reason}")
                 return False, reason
 
-        # Always yield to human
+        # Fall back to turn_state check
         if turn_state.is_human_turn():
-            reason = "it's human's turn"
+            reason = "Waiting for human player"
             logger.info(f"[TURN_CHECK] npc: Returning False - {reason}")
             return False, reason
 
-        # Check if it's NPC's turn
-        is_my_turn = turn_state.is_agent_turn(self.AGENT_ID)
-        if is_my_turn:
-            reason = f"active_agent={turn_state.active_agent!r} matches {self.AGENT_ID!r}"
+        if turn_state.is_agent_turn(self.AGENT_ID):
+            reason = "Turn state says it's my turn"
             logger.info(f"[TURN_CHECK] npc: Returning True - {reason}")
             return True, reason
-        else:
-            reason = f"active_agent={turn_state.active_agent!r} does not match {self.AGENT_ID!r}"
-            logger.info(f"[TURN_CHECK] npc: Returning False - {reason}")
-            return False, reason
+
+        reason = f"Not my turn (active: {turn_state.active_agent})"
+        logger.info(f"[TURN_CHECK] npc: Returning False - {reason}")
+        return False, reason
 
     def _get_turn_state(self) -> TurnState:
         """Get the current turn state from world state.

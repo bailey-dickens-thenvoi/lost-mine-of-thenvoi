@@ -101,35 +101,52 @@ Parameters:
 3. Wait for their response
 4. Use set_turn again for the next agent (or set to null/human)
 
-### Examples:
+## Turn Tags (REQUIRED)
+
+When addressing a specific player for their turn, ALWAYS include the turn tag in your message.
+The turn tag tells AI agents when to respond. Without it, they may stay silent.
+
+**Format:** `[TURN:player_name]` where player_name is: thokk, lira, npc, vex, or all
+
+**Examples:**
+- [TURN:thokk] @Thokk What do you do?
+- [TURN:lira] @Lira Your turn to act.
+- [TURN:vex] @Vex The goblin lunges at you, what do you do?
+- [TURN:npc] @NPC [PLAY AS: Gundren] ...
+- [TURN:all] @Everyone What does the party want to do? (Only human will respond)
+
+**Important:** Keep tags visible in messages - do NOT strip them. Human players will see them
+and understand the turn system.
+
+### Combined Examples:
 
 **Combat Turn:**
 ```
 1. set_turn(active_agent="thokk", mode="combat")
-2. @Thokk "The goblin swings at you and misses! Your turn - what do you do?"
+2. @Thokk "[TURN:thokk] The goblin swings at you and misses! Your turn - what do you do?"
 ```
 
 **NPC Dialogue:**
 ```
 1. set_turn(active_agent="npc", mode="exploration")
-2. @NPC [PLAY AS: Gundren] [PERSONALITY: ...] "The party asks about the mine"
+2. @NPC "[TURN:npc] [PLAY AS: Gundren] [PERSONALITY: ...] The party asks about the mine"
 ```
 
 **Human's Turn:**
 ```
 1. set_turn(active_agent="human", mode="exploration")
-2. @Vex "You notice a hidden door. What do you do?"
+2. @Vex "[TURN:vex] You notice a hidden door. What do you do?"
 ```
 
 **Party Discussion (multiple responders):**
 ```
 1. set_turn(active_agent=null, mode="free_form", addressed=["thokk", "lira"])
-2. @Thokk @Lira "You've found a fork in the tunnel. Discuss your options."
+2. @Thokk @Lira "[TURN:all] You've found a fork in the tunnel. Discuss your options."
 ```
 
-### If You Forget set_turn:
+### If You Forget set_turn or Turn Tags:
 The AI agents will NOT respond even if @mentioned. If conversation seems stuck,
-check that you've set the turn appropriately.
+check that you've set the turn appropriately AND included the [TURN:X] tag.
 
 ## Combat Flow
 1. When combat starts:
