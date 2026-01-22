@@ -7,7 +7,6 @@ A playable Dungeons & Dragons campaign (Lost Mines of Phandelver) powered by mul
 This project implements a D&D 5e campaign as a collaborative multi-agent system where:
 
 - **DM Agent**: Orchestrates the game, manages narrative, combat, and world state
-- **NPC Agent**: Generic actor that can portray any campaign NPC with personality injection
 - **AI Player Agents**: Automated party members (Thokk the Fighter, Lira the Cleric)
 - **Human Player**: Participates via the Thenvoi platform chat interface
 
@@ -16,7 +15,7 @@ This project implements a D&D 5e campaign as a collaborative multi-agent system 
 ### Prerequisites
 
 - Python 3.11 or higher
-- A Thenvoi platform account (https://platform.thenvoi.com)
+- A Thenvoi platform account (https://app.thenvoi.com)
 - An Anthropic API key
 
 ### Installation
@@ -47,10 +46,9 @@ This project implements a D&D 5e campaign as a collaborative multi-agent system 
 
 ### Creating Agents on Thenvoi Platform
 
-1. Go to https://platform.thenvoi.com
-2. Create 4 "External" type agents:
+1. Go to https://app.thenvoi.com
+2. Create 3 "External" type agents:
    - **DM Agent**: Dungeon Master orchestrator
-   - **NPC Agent**: Generic NPC actor
    - **Thokk**: Half-Orc Fighter player
    - **Lira**: Human Cleric player
 3. Copy each agent's `agent_id` and `api_key` to your `.env` file
@@ -68,12 +66,16 @@ python -m src.main --agent thokk
 
 # Terminal 3 - Lira (Cleric)
 python -m src.main --agent lira
-
-# Terminal 4 (optional) - NPC Agent
-python -m src.main --agent npc
 ```
 
 Then join the chatroom as a human player via the Thenvoi platform UI.
+
+#### Command Line Options
+
+- `--agent <name>`: Specify which agent to run (dm, thokk, lira)
+- `--new-game`: Reset game state to start a fresh campaign
+- `--debug`: Enable verbose logging for troubleshooting
+- `--check`: Verify configuration without starting the agent
 
 ## Project Structure
 

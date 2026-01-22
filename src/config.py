@@ -39,11 +39,11 @@ class Settings(BaseSettings):
 
     # Thenvoi Platform URLs
     thenvoi_rest_url: str = Field(
-        default="https://api.thenvoi.com",
+        default="https://app.thenvoi.com",
         description="Thenvoi REST API base URL",
     )
     thenvoi_ws_url: str = Field(
-        default="wss://api.thenvoi.com/ws",
+        default="wss://app.thenvoi.com/api/v1/socket/websocket",
         description="Thenvoi WebSocket URL",
     )
 
