@@ -30,6 +30,10 @@ from src.tools.world_state import get_world_state_manager
 logger = logging.getLogger(__name__)
 
 
+# Known agent names for multi-mention detection
+KNOWN_AGENT_NAMES = ["thokk", "lira", "vex", "gundren", "sildar", "klarg", "npc"]
+
+
 # Character Data
 THOKK_CHARACTER: dict[str, Any] = {
     "name": "Thokk",
@@ -324,7 +328,37 @@ class AIPlayerAdapter(AnthropicAdapter):
             **kwargs,
         )
 
-    def should_respond(self, turn_state: TurnState) -> bool:
+    def _count_agent_mentions(self, msg: PlatformMessage) -> int:
+        """Count how many known agent names are mentioned in the message.
+
+        Args:
+            msg: The platform message to check
+
+        Returns:
+            Number of distinct agent names mentioned
+        """
+        # Get message content - try different attributes that might contain the text
+        content = ""
+        if hasattr(msg, 'content'):
+            content = str(msg.content).lower()
+        elif hasattr(msg, 'text'):
+            content = str(msg.text).lower()
+
+        # Also check format_for_llm output
+        try:
+            llm_content = msg.format_for_llm().lower()
+            content = f"{content} {llm_content}"
+        except Exception:
+            pass
+
+        mentioned = set()
+        for name in KNOWN_AGENT_NAMES:
+            if name.lower() in content:
+                mentioned.add(name)
+
+        return len(mentioned)
+
+    def should_respond(self, turn_state: TurnState, msg: PlatformMessage | None = None) -> tuple[bool, str]:
         """Check if this agent should respond based on turn state.
 
         This prevents response cascades by only allowing agents to
@@ -332,16 +366,42 @@ class AIPlayerAdapter(AnthropicAdapter):
 
         Args:
             turn_state: Current turn state from world state
+            msg: Optional message to check for multi-mentions
 
         Returns:
-            True if this agent should respond
+            Tuple of (should_respond: bool, reason: str)
         """
+        # Log turn state for debugging
+        logger.info(
+            f"[TURN_CHECK] {self.agent_id}.should_respond() called - "
+            f"active_agent={turn_state.active_agent!r}, mode={turn_state.mode!r}, "
+            f"addressed={turn_state.addressed_agents}"
+        )
+
+        # NEW: Multi-mention suppression - if multiple agents mentioned, this is informational
+        if msg is not None:
+            mentioned_count = self._count_agent_mentions(msg)
+            if mentioned_count > 1:
+                reason = f"Multiple agents mentioned ({mentioned_count}) - informational message, not responding"
+                logger.info(f"[TURN_CHECK] {self.agent_id}: Returning False - {reason}")
+                return False, reason
+
         # Always yield to human interjections
         if turn_state.is_human_turn():
-            return False
+            reason = "it's human's turn"
+            logger.info(f"[TURN_CHECK] {self.agent_id}: Returning False - {reason}")
+            return False, reason
 
         # Check if it's this agent's turn
-        return turn_state.is_agent_turn(self.agent_id)
+        is_my_turn = turn_state.is_agent_turn(self.agent_id)
+        if is_my_turn:
+            reason = f"active_agent={turn_state.active_agent!r} matches {self.agent_id!r}"
+            logger.info(f"[TURN_CHECK] {self.agent_id}: Returning True - {reason}")
+            return True, reason
+        else:
+            reason = f"active_agent={turn_state.active_agent!r} does not match {self.agent_id!r}"
+            logger.info(f"[TURN_CHECK] {self.agent_id}: Returning False - {reason}")
+            return False, reason
 
     def _get_turn_state(self) -> TurnState:
         """Get the current turn state from world state.
@@ -350,6 +410,11 @@ class AIPlayerAdapter(AnthropicAdapter):
             Current TurnState
         """
         manager = get_world_state_manager()
+        # Log where we're getting state from and what it contains
+        logger.debug(
+            f"[STATE_SOURCE] {self.agent_id}: Getting turn_state from manager "
+            f"(state_file={manager.state_file}, id={id(manager)})"
+        )
         return manager.state.turn_state
 
     async def on_message(
@@ -369,7 +434,18 @@ class AIPlayerAdapter(AnthropicAdapter):
         - Only calls LLM if it's this agent's turn
         - Skips LLM call silently if not their turn
         """
-        logger.debug(f"{self.agent_id} handling message {msg.id} in room {room_id}")
+        # Log message receipt with sender info and content preview
+        sender_info = getattr(msg, 'sender', None) or getattr(msg, 'author', 'unknown')
+        content_preview = ""
+        try:
+            content_preview = msg.format_for_llm()[:100] + "..." if len(msg.format_for_llm()) > 100 else msg.format_for_llm()
+        except Exception:
+            content_preview = "[unable to preview]"
+        logger.info(
+            f"[MSG_RECV] {self.agent_id} received message {msg.id} in room {room_id} "
+            f"from {sender_info}"
+        )
+        logger.info(f"[MSG_RECV] {self.agent_id} content preview: {content_preview}")
 
         # Initialize history for this room on first message
         if is_session_bootstrap:
@@ -398,17 +474,24 @@ class AIPlayerAdapter(AnthropicAdapter):
         })
 
         # GATE: Check turn state before calling LLM
+        logger.info(f"[GATE] {self.agent_id}: About to check turn state...")
         turn_state = self._get_turn_state()
-        if not self.should_respond(turn_state):
-            logger.debug(
-                f"{self.agent_id} received message but not their turn "
-                f"(active_agent={turn_state.active_agent}, mode={turn_state.mode}), "
+        logger.info(
+            f"[GATE] {self.agent_id}: Retrieved turn_state - "
+            f"active_agent={turn_state.active_agent!r}, mode={turn_state.mode!r}, "
+            f"addressed={turn_state.addressed_agents}, turn_started_at={turn_state.turn_started_at}"
+        )
+
+        should_respond, reason = self.should_respond(turn_state, msg)
+        if not should_respond:
+            logger.info(
+                f"[GATE] {self.agent_id}: BLOCKED - {reason}, "
                 f"skipping LLM call"
             )
             return
 
         # It's our turn - proceed with LLM call
-        logger.info(f"{self.agent_id}: It's my turn, calling LLM")
+        logger.info(f"[GATE] {self.agent_id}: ALLOWED - {reason}, calling LLM")
 
         # Get tool schemas
         tool_schemas = tools.get_anthropic_tool_schemas()

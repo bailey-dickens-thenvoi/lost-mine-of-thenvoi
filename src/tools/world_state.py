@@ -53,6 +53,7 @@ class WorldStateManager:
     def state(self) -> WorldState:
         """Get the current world state, loading from file if needed."""
         if self._state is None:
+            logger.info(f"[STATE] First access - loading state from {self.state_file}")
             self._state = self.load()
         return self._state
 
@@ -440,7 +441,10 @@ def get_world_state_manager(state_file: str = "data/world_state.json") -> WorldS
     """
     global _manager
     if _manager is None:
+        logger.info(f"[STATE] Creating new WorldStateManager (state_file={state_file})")
         _manager = WorldStateManager(state_file)
+    else:
+        logger.debug(f"[STATE] Reusing existing WorldStateManager (id={id(_manager)})")
     return _manager
 
 

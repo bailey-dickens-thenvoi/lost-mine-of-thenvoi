@@ -47,6 +47,12 @@ DM_SYSTEM_PROMPT = """You are the Dungeon Master for a D&D 5th Edition campaign:
 2. Always @mention players when addressing them (include their name in the mentions array)
 3. Human players cannot roll dice - you MUST roll for them when they declare actions
 
+## Communication Protocol
+- To get a response from ONE agent: @mention ONLY that agent
+- To broadcast information to all: @mention ALL agents (they will read but not respond)
+- Never expect multiple agents to respond to the same message
+- When addressing multiple players about what happened (e.g., combat results), mention ALL of them so they know it's informational
+
 ## Your Custom Tools
 
 ### roll_dice
@@ -369,7 +375,15 @@ Party Status:
         This overrides the parent to add our custom tools to the schema
         and handle their execution.
         """
-        logger.debug(f"DM handling message {msg.id} in room {room_id}")
+        # Log message receipt with sender info and content preview
+        sender_info = getattr(msg, 'sender', None) or getattr(msg, 'author', 'unknown')
+        content_preview = ""
+        try:
+            content_preview = msg.format_for_llm()[:100] + "..." if len(msg.format_for_llm()) > 100 else msg.format_for_llm()
+        except Exception:
+            content_preview = "[unable to preview]"
+        logger.info(f"[MSG_RECV] dm received message {msg.id} in room {room_id} from {sender_info}")
+        logger.info(f"[MSG_RECV] dm content preview: {content_preview}")
 
         # Initialize history for this room
         if is_session_bootstrap:
@@ -596,14 +610,32 @@ Party Status:
         """
         import time
 
+        logger.info(
+            f"[SET_TURN] Called with args: active_agent={input_args.get('active_agent')!r}, "
+            f"mode={input_args.get('mode', 'dm_control')!r}, "
+            f"addressed={input_args.get('addressed', [])}"
+        )
+
         turn_state = self.state_manager.state.turn_state
+        old_active = turn_state.active_agent
+        old_mode = turn_state.mode
+
         turn_state.active_agent = input_args.get("active_agent")
         turn_state.mode = input_args.get("mode", "dm_control")
         turn_state.addressed_agents = input_args.get("addressed", [])
         turn_state.turn_started_at = time.time()
 
+        logger.info(
+            f"[SET_TURN] Updated turn_state: {old_active!r} -> {turn_state.active_agent!r}, "
+            f"mode: {old_mode!r} -> {turn_state.mode!r}"
+        )
+
         # Auto-save the state change
         self.state_manager.save()
+        logger.info(
+            f"[SET_TURN] Saved to {self.state_manager.state_file} "
+            f"(manager_id={id(self.state_manager)})"
+        )
 
         # Build informative response
         if turn_state.active_agent:

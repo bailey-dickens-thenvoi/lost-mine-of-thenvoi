@@ -6,11 +6,44 @@ Individual agents can be run separately or together based on command line args.
 
 import argparse
 import asyncio
+import logging
+import os
 import sys
 from pathlib import Path
 from typing import NoReturn
 
 from src.config import get_settings
+
+
+def configure_logging(debug: bool = False) -> None:
+    """Configure logging for the application.
+
+    Args:
+        debug: If True, set level to DEBUG; otherwise INFO
+    """
+    level = logging.DEBUG if debug else logging.INFO
+
+    # Configure root logger
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        stream=sys.stderr,
+    )
+
+    # Set specific loggers to appropriate levels
+    # Our application loggers should show debug info when requested
+    for logger_name in ["src.agents", "src.tools", "src.game"]:
+        logging.getLogger(logger_name).setLevel(level)
+
+    # Third-party loggers should be quieter
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+
+    if debug:
+        logging.info("[LOGGING] Debug logging enabled - turn state checks will be visible")
 
 # Path to the world state file
 WORLD_STATE_PATH = Path(__file__).parent.parent / "data" / "world_state.json"
@@ -106,6 +139,16 @@ Examples:
   python -m src.main --agent thokk    # Run the Thokk (Fighter) agent
   python -m src.main --new-game       # Reset game state and start fresh
   python -m src.main --new-game --agent dm  # Reset and start DM agent
+  python -m src.main --agent dm --debug     # Run DM with debug logging
+
+Debug Logging:
+  Use --debug to see turn state checks and diagnose agent response issues.
+  Look for these log prefixes:
+    [SET_TURN]    - DM setting turn state
+    [GATE]        - Agent checking if it should respond
+    [TURN_CHECK]  - Detailed turn state evaluation
+    [MSG_RECV]    - Message received by agent
+    [STATE]       - World state manager operations
         """,
     )
 
@@ -127,7 +170,16 @@ Examples:
         help="Run a specific agent",
     )
 
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging (shows turn state checks)",
+    )
+
     args = parser.parse_args()
+
+    # Configure logging before anything else
+    configure_logging(debug=args.debug)
 
     print_banner()
 
