@@ -215,9 +215,11 @@ class TestAIPlayerAdapter:
             character=THOKK_CHARACTER,
             personality_section=FIGHTER_PERSONALITY,
             combat_priorities=FIGHTER_COMBAT_PRIORITIES,
+            agent_id="thokk",
         )
 
         assert adapter.character == THOKK_CHARACTER
+        assert adapter.agent_id == "thokk"
 
     def test_stores_system_prompt(self):
         """Should have a system prompt set."""
@@ -225,6 +227,7 @@ class TestAIPlayerAdapter:
             character=THOKK_CHARACTER,
             personality_section=FIGHTER_PERSONALITY,
             combat_priorities=FIGHTER_COMBAT_PRIORITIES,
+            agent_id="thokk",
         )
 
         # The system prompt should be set in the parent class

@@ -9,6 +9,55 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class TurnState(BaseModel):
+    """Controls which agent should respond to messages.
+
+    This model is critical for preventing agent response cascades.
+    The DM uses the set_turn tool to specify which agent should respond,
+    and agents check this state before calling the LLM.
+    """
+
+    active_agent: str | None = Field(
+        default=None,
+        description="Agent ID that should respond: 'thokk', 'lira', 'npc', 'human', or None (DM only)",
+    )
+    mode: str = Field(
+        default="dm_control",
+        description="Current flow mode: dm_control, combat, exploration, free_form",
+    )
+    addressed_agents: list[str] = Field(
+        default_factory=list,
+        description="List of agent IDs being spoken TO (for free_form mode)",
+    )
+    turn_started_at: float | None = Field(
+        default=None,
+        description="Timestamp when turn was set (for staleness detection)",
+    )
+
+    def is_agent_turn(self, agent_id: str) -> bool:
+        """Check if it's a specific agent's turn.
+
+        Args:
+            agent_id: The agent ID to check ('thokk', 'lira', 'npc')
+
+        Returns:
+            True if the agent should respond
+        """
+        # Direct match
+        if self.active_agent == agent_id:
+            return True
+
+        # Free-form mode: respond if addressed
+        if self.mode == "free_form" and agent_id in self.addressed_agents:
+            return True
+
+        return False
+
+    def is_human_turn(self) -> bool:
+        """Check if it's the human player's turn."""
+        return self.active_agent == "human"
+
+
 class CombatState(BaseModel):
     """State of the current combat encounter."""
 
@@ -177,6 +226,10 @@ class WorldState(BaseModel):
     current_scene: str = Field(default="intro", description="Current scene identifier")
     narrative_progress: NarrativeProgress = Field(default_factory=NarrativeProgress)
     combat: CombatState = Field(default_factory=CombatState)
+    turn_state: TurnState = Field(
+        default_factory=TurnState,
+        description="Controls which agent should respond to messages",
+    )
     characters: dict[str, CharacterState] = Field(
         default_factory=dict, description="Player characters by ID"
     )

@@ -7,6 +7,10 @@ priorities, and decision-making patterns.
 Current AI Players:
 - Thokk: Half-Orc Fighter - direct, combat-focused, protective
 - Lira: Human Cleric (Life) - supportive, wise, healing-focused
+
+Turn State Gating:
+AI players check the turn_state in WorldState before responding.
+They only call the LLM when it's their turn, preventing response cascades.
 """
 
 from __future__ import annotations
@@ -16,6 +20,12 @@ from typing import Any
 
 from thenvoi import Agent
 from thenvoi.adapters import AnthropicAdapter
+from thenvoi.core.protocols import AgentToolsProtocol
+from thenvoi.core.types import PlatformMessage
+from thenvoi.converters.anthropic import AnthropicMessages
+
+from src.game.models import TurnState
+from src.tools.world_state import get_world_state_manager
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +282,11 @@ class AIPlayerAdapter(AnthropicAdapter):
 
     This adapter uses character-specific system prompts to create
     distinct personalities and decision-making patterns.
+
+    Turn State Gating:
+    The adapter checks turn_state before calling the LLM. If it's not
+    this agent's turn, the message is added to history but no LLM call
+    is made. This prevents response cascades while preserving context.
     """
 
     def __init__(
@@ -279,6 +294,7 @@ class AIPlayerAdapter(AnthropicAdapter):
         character: dict[str, Any],
         personality_section: str,
         combat_priorities: str,
+        agent_id: str,
         model: str = "claude-sonnet-4-5-20250929",
         anthropic_api_key: str | None = None,
         **kwargs,
@@ -289,11 +305,13 @@ class AIPlayerAdapter(AnthropicAdapter):
             character: Character data dictionary
             personality_section: Character-specific personality text
             combat_priorities: Character-specific combat priorities
+            agent_id: Unique identifier for this agent ('thokk', 'lira')
             model: Claude model to use
             anthropic_api_key: Anthropic API key (required)
             **kwargs: Additional arguments for AnthropicAdapter
         """
         self.character = character
+        self.agent_id = agent_id
         system_prompt = build_player_system_prompt(
             character, personality_section, combat_priorities
         )
@@ -306,6 +324,138 @@ class AIPlayerAdapter(AnthropicAdapter):
             **kwargs,
         )
 
+    def should_respond(self, turn_state: TurnState) -> bool:
+        """Check if this agent should respond based on turn state.
+
+        This prevents response cascades by only allowing agents to
+        call the LLM when the DM has explicitly set their turn.
+
+        Args:
+            turn_state: Current turn state from world state
+
+        Returns:
+            True if this agent should respond
+        """
+        # Always yield to human interjections
+        if turn_state.is_human_turn():
+            return False
+
+        # Check if it's this agent's turn
+        return turn_state.is_agent_turn(self.agent_id)
+
+    def _get_turn_state(self) -> TurnState:
+        """Get the current turn state from world state.
+
+        Returns:
+            Current TurnState
+        """
+        manager = get_world_state_manager()
+        return manager.state.turn_state
+
+    async def on_message(
+        self,
+        msg: PlatformMessage,
+        tools: AgentToolsProtocol,
+        history: AnthropicMessages,
+        participants_msg: str | None,
+        *,
+        is_session_bootstrap: bool,
+        room_id: str,
+    ) -> None:
+        """Handle incoming message with turn state gating.
+
+        Key behavior:
+        - Always adds message to history (preserves context)
+        - Only calls LLM if it's this agent's turn
+        - Skips LLM call silently if not their turn
+        """
+        logger.debug(f"{self.agent_id} handling message {msg.id} in room {room_id}")
+
+        # Initialize history for this room on first message
+        if is_session_bootstrap:
+            if history:
+                self._message_history[room_id] = list(history)
+                logger.info(
+                    f"Room {room_id}: {self.agent_id} loaded {len(history)} historical messages"
+                )
+            else:
+                self._message_history[room_id] = []
+        elif room_id not in self._message_history:
+            self._message_history[room_id] = []
+
+        # Inject participants message if changed
+        if participants_msg:
+            self._message_history[room_id].append({
+                "role": "user",
+                "content": f"[System]: {participants_msg}",
+            })
+
+        # Always add current message to history (preserves context)
+        user_message = msg.format_for_llm()
+        self._message_history[room_id].append({
+            "role": "user",
+            "content": user_message,
+        })
+
+        # GATE: Check turn state before calling LLM
+        turn_state = self._get_turn_state()
+        if not self.should_respond(turn_state):
+            logger.debug(
+                f"{self.agent_id} received message but not their turn "
+                f"(active_agent={turn_state.active_agent}, mode={turn_state.mode}), "
+                f"skipping LLM call"
+            )
+            return
+
+        # It's our turn - proceed with LLM call
+        logger.info(f"{self.agent_id}: It's my turn, calling LLM")
+
+        # Get tool schemas
+        tool_schemas = tools.get_anthropic_tool_schemas()
+
+        # Tool loop
+        while True:
+            try:
+                response = await self._call_anthropic(
+                    messages=self._message_history[room_id],
+                    tools=tool_schemas,
+                )
+            except Exception as e:
+                logger.error(f"Error calling Anthropic: {e}", exc_info=True)
+                await self._report_error(tools, str(e))
+                raise
+
+            # Check for tool use
+            if response.stop_reason != "tool_use":
+                text_content = self._extract_text_content(response.content)
+                if text_content:
+                    self._message_history[room_id].append({
+                        "role": "assistant",
+                        "content": text_content,
+                    })
+                break
+
+            # Add assistant response with tool_use blocks to history
+            serialized_content = self._serialize_content_blocks(response.content)
+            self._message_history[room_id].append({
+                "role": "assistant",
+                "content": serialized_content,
+            })
+
+            # Process tool calls
+            tool_results = await self._process_tool_calls(response, tools)
+
+            # Add tool results to history
+            self._message_history[room_id].append({
+                "role": "user",
+                "content": tool_results,
+            })
+
+        logger.debug(
+            f"{self.agent_id}: Message {msg.id} processed, "
+            f"history now has {len(self._message_history[room_id])} messages"
+        )
+
 
 class FighterAdapter(AIPlayerAdapter):
     """AI Player adapter for Thokk the Fighter."""
@@ -315,6 +465,7 @@ class FighterAdapter(AIPlayerAdapter):
             character=THOKK_CHARACTER,
             personality_section=FIGHTER_PERSONALITY,
             combat_priorities=FIGHTER_COMBAT_PRIORITIES,
+            agent_id="thokk",
             **kwargs,
         )
 
@@ -327,6 +478,7 @@ class ClericAdapter(AIPlayerAdapter):
             character=LIRA_CHARACTER,
             personality_section=CLERIC_PERSONALITY,
             combat_priorities=CLERIC_COMBAT_PRIORITIES,
+            agent_id="lira",
             **kwargs,
         )
 

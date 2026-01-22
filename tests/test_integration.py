@@ -462,3 +462,156 @@ class TestFullDemoFlow:
 
         finally:
             harness.cleanup()
+
+
+class TestTurnStateIntegration:
+    """Integration tests for turn state system."""
+
+    @pytest.fixture
+    def harness(self):
+        """Create a test harness."""
+        h = AgentTestHarness()
+        h.setup_all_agents()
+        yield h
+        h.cleanup()
+
+    def test_turn_state_in_world_state(self, harness):
+        """WorldState should include turn_state."""
+        assert hasattr(harness.state_manager.state, "turn_state")
+        assert harness.state_manager.state.turn_state.active_agent is None
+        assert harness.state_manager.state.turn_state.mode == "dm_control"
+
+    def test_set_turn_updates_state(self, harness):
+        """Setting turn should update world state."""
+        turn_state = harness.state_manager.state.turn_state
+        turn_state.active_agent = "thokk"
+        turn_state.mode = "combat"
+
+        assert harness.state_manager.state.turn_state.active_agent == "thokk"
+        assert harness.state_manager.state.turn_state.mode == "combat"
+
+    def test_turn_state_serializes(self, harness):
+        """Turn state should be included in state serialization."""
+        turn_state = harness.state_manager.state.turn_state
+        turn_state.active_agent = "lira"
+        turn_state.mode = "exploration"
+
+        # Save and verify
+        harness.state_manager.save()
+        data = harness.state_manager.state.model_dump()
+        assert data["turn_state"]["active_agent"] == "lira"
+        assert data["turn_state"]["mode"] == "exploration"
+
+    @pytest.mark.asyncio
+    async def test_combat_turn_flow_simulation(self, harness):
+        """Simulate a combat turn flow with turn state management."""
+        # Start combat
+        harness.transition_to_scene("goblin_ambush")
+        harness.start_combat(["goblin_1", "goblin_2"])
+
+        # DM announces combat
+        await harness.dm_narrates(
+            "[NARRATION] Roll for initiative! Combat begins!"
+        )
+
+        # Set Thokk's turn
+        turn_state = harness.state_manager.state.turn_state
+        turn_state.active_agent = "thokk"
+        turn_state.mode = "combat"
+
+        # Verify Thokk would respond
+        assert turn_state.is_agent_turn("thokk") is True
+        assert turn_state.is_agent_turn("lira") is False
+        assert turn_state.is_agent_turn("npc") is False
+
+        # DM prompts Thokk
+        await harness.dm_prompts_turn("Thokk", "[TURN:thokk] Your turn!")
+
+        # Simulate Thokk responding (in real scenario, adapter would check turn state)
+        # Here we verify the state is correct for Thokk to respond
+
+        # Switch to Lira's turn
+        turn_state.active_agent = "lira"
+
+        assert turn_state.is_agent_turn("thokk") is False
+        assert turn_state.is_agent_turn("lira") is True
+
+        # DM prompts Lira
+        await harness.dm_prompts_turn("Lira", "[TURN:lira] Your turn!")
+
+        # Switch to human's turn
+        turn_state.active_agent = "human"
+        turn_state.mode = "combat"
+
+        assert turn_state.is_human_turn() is True
+        assert turn_state.is_agent_turn("thokk") is False
+        assert turn_state.is_agent_turn("lira") is False
+
+        # Human takes action
+        await harness.simulate_human_action("I attack goblin_1 with my shortsword")
+
+        # End combat
+        harness.end_combat()
+        turn_state.active_agent = "human"
+        turn_state.mode = "exploration"
+
+        log = harness.get_conversation_log()
+        assert len(log) >= 4
+
+    @pytest.mark.asyncio
+    async def test_free_form_multiple_responders(self, harness):
+        """Test free_form mode allowing multiple agents to respond."""
+        turn_state = harness.state_manager.state.turn_state
+        turn_state.active_agent = None
+        turn_state.mode = "free_form"
+        turn_state.addressed_agents = ["thokk", "lira"]
+
+        # Both Thokk and Lira should be able to respond
+        assert turn_state.is_agent_turn("thokk") is True
+        assert turn_state.is_agent_turn("lira") is True
+        assert turn_state.is_agent_turn("npc") is False
+
+        # DM asks both
+        await harness.dm_narrates(
+            "@Thokk @Lira The tunnel forks. What do you think?"
+        )
+
+    @pytest.mark.asyncio
+    async def test_dm_control_mode(self, harness):
+        """Test dm_control mode where no agents respond."""
+        turn_state = harness.state_manager.state.turn_state
+        turn_state.active_agent = None
+        turn_state.mode = "dm_control"
+        turn_state.addressed_agents = []
+
+        # No one should respond in dm_control mode
+        assert turn_state.is_agent_turn("thokk") is False
+        assert turn_state.is_agent_turn("lira") is False
+        assert turn_state.is_agent_turn("npc") is False
+        assert turn_state.is_human_turn() is False
+
+        # DM narrates without expecting response
+        await harness.dm_narrates(
+            "[NARRATION] The cave grows darker as you venture deeper..."
+        )
+
+    @pytest.mark.asyncio
+    async def test_npc_turn_for_dialogue(self, harness):
+        """Test NPC turn for dialogue scenes."""
+        turn_state = harness.state_manager.state.turn_state
+        turn_state.active_agent = "npc"
+        turn_state.mode = "exploration"
+
+        # NPC should respond
+        assert turn_state.is_agent_turn("npc") is True
+        assert turn_state.is_agent_turn("thokk") is False
+        assert turn_state.is_agent_turn("lira") is False
+
+        # DM invokes NPC
+        await harness.invoke_npc(
+            character_name="Gundren Rockseeker",
+            personality="Gruff but grateful dwarf",
+            context="Just rescued from goblins",
+            scene="Cave exit",
+            player_dialogue="Party: 'Are you alright?'"
+        )
