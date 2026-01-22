@@ -47,6 +47,12 @@ DM_SYSTEM_PROMPT = """You are the Dungeon Master for a D&D 5th Edition campaign:
 2. Always @mention players when addressing them (include their name in the mentions array)
 3. Human players cannot roll dice - you MUST roll for them when they declare actions
 
+## Communication Protocol
+- To get a response from ONE agent: @mention ONLY that agent
+- To broadcast information to all: @mention ALL agents (they will read but not respond)
+- Never expect multiple agents to respond to the same message
+- When addressing multiple players about what happened (e.g., combat results), mention ALL of them so they know it's informational
+
 ## Your Custom Tools
 
 ### roll_dice
@@ -78,6 +84,70 @@ Examples:
 - Damage enemy: world_state(operation="update_hp", entity_id="goblin_1", delta=-7)
 - Check party: world_state(operation="get_party_status")
 
+## Turn Management (CRITICAL)
+
+You MUST use set_turn BEFORE @mentioning any AI agent. This prevents response cascades.
+
+### set_turn Tool
+Controls which agent should respond next.
+Parameters:
+- active_agent: Who should respond: "thokk", "lira", "npc", "human", or null (DM only)
+- mode: Flow mode - "dm_control", "combat", "exploration", "free_form"
+- addressed: For free_form mode, list of agents who can respond
+
+### Workflow:
+1. Use set_turn to specify who should respond
+2. THEN @mention and address that agent
+3. Wait for their response
+4. Use set_turn again for the next agent (or set to null/human)
+
+## Turn Tags (REQUIRED)
+
+When addressing a specific player for their turn, ALWAYS include the turn tag in your message.
+The turn tag tells AI agents when to respond. Without it, they may stay silent.
+
+**Format:** `[TURN:player_name]` where player_name is: thokk, lira, npc, vex, or all
+
+**Examples:**
+- [TURN:thokk] @Thokk What do you do?
+- [TURN:lira] @Lira Your turn to act.
+- [TURN:vex] @Vex The goblin lunges at you, what do you do?
+- [TURN:npc] @NPC [PLAY AS: Gundren] ...
+- [TURN:all] @Everyone What does the party want to do? (Only human will respond)
+
+**Important:** Keep tags visible in messages - do NOT strip them. Human players will see them
+and understand the turn system.
+
+### Combined Examples:
+
+**Combat Turn:**
+```
+1. set_turn(active_agent="thokk", mode="combat")
+2. @Thokk "[TURN:thokk] The goblin swings at you and misses! Your turn - what do you do?"
+```
+
+**NPC Dialogue:**
+```
+1. set_turn(active_agent="npc", mode="exploration")
+2. @NPC "[TURN:npc] [PLAY AS: Gundren] [PERSONALITY: ...] The party asks about the mine"
+```
+
+**Human's Turn:**
+```
+1. set_turn(active_agent="human", mode="exploration")
+2. @Vex "[TURN:vex] You notice a hidden door. What do you do?"
+```
+
+**Party Discussion (multiple responders):**
+```
+1. set_turn(active_agent=null, mode="free_form", addressed=["thokk", "lira"])
+2. @Thokk @Lira "[TURN:all] You've found a fork in the tunnel. Discuss your options."
+```
+
+### If You Forget set_turn or Turn Tags:
+The AI agents will NOT respond even if @mentioned. If conversation seems stuck,
+check that you've set the turn appropriately AND included the [TURN:X] tag.
+
 ## Combat Flow
 1. When combat starts:
    - Roll initiative for all combatants
@@ -85,6 +155,7 @@ Examples:
    - Set combat.active = true
 
 2. On each turn:
+   - Use set_turn(active_agent="<character>", mode="combat") FIRST
    - Announce whose turn it is with @mention
    - Wait for their declared action
    - Roll appropriate dice
@@ -94,6 +165,7 @@ Examples:
 
 3. When combat ends:
    - Set combat.active = false
+   - Use set_turn(active_agent="human") to return control
    - Announce victory/outcome
    - Describe aftermath and loot
 
@@ -276,6 +348,33 @@ Party Status:
                     "required": ["operation"],
                 },
             },
+            {
+                "name": "set_turn",
+                "description": "Set which agent should respond next. MUST call before @mentioning AI agents to prevent response cascades.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "active_agent": {
+                            "type": ["string", "null"],
+                            "enum": ["thokk", "lira", "npc", "human", None],
+                            "description": "Which agent should respond (null = DM only mode)",
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["dm_control", "combat", "exploration", "free_form"],
+                            "description": "Flow mode for this turn",
+                            "default": "dm_control",
+                        },
+                        "addressed": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "For free_form: list of agents who can respond",
+                            "default": [],
+                        },
+                    },
+                    "required": ["active_agent"],
+                },
+            },
         ]
 
     async def on_message(
@@ -293,7 +392,15 @@ Party Status:
         This overrides the parent to add our custom tools to the schema
         and handle their execution.
         """
-        logger.debug(f"DM handling message {msg.id} in room {room_id}")
+        # Log message receipt with sender info and content preview
+        sender_info = getattr(msg, 'sender', None) or getattr(msg, 'author', 'unknown')
+        content_preview = ""
+        try:
+            content_preview = msg.format_for_llm()[:100] + "..." if len(msg.format_for_llm()) > 100 else msg.format_for_llm()
+        except Exception:
+            content_preview = "[unable to preview]"
+        logger.info(f"[MSG_RECV] dm received message {msg.id} in room {room_id} from {sender_info}")
+        logger.info(f"[MSG_RECV] dm content preview: {content_preview}")
 
         # Initialize history for this room
         if is_session_bootstrap:
@@ -402,6 +509,8 @@ Party Status:
                     result = self._execute_roll_dice(tool_input)
                 elif tool_name == "world_state":
                     result = self._execute_world_state(tool_input)
+                elif tool_name == "set_turn":
+                    result = self._execute_set_turn(tool_input)
                 else:
                     # Platform tool - delegate
                     result = await tools.execute_tool_call(tool_name, tool_input)
@@ -509,6 +618,49 @@ Party Status:
 
         else:
             return f"Error: Unknown operation: {operation}"
+
+    def _execute_set_turn(self, input_args: dict) -> str:
+        """Execute the set_turn tool to control agent response gating.
+
+        This updates the turn_state in world state, which agents check
+        before deciding whether to call the LLM.
+        """
+        import time
+
+        logger.info(
+            f"[SET_TURN] Called with args: active_agent={input_args.get('active_agent')!r}, "
+            f"mode={input_args.get('mode', 'dm_control')!r}, "
+            f"addressed={input_args.get('addressed', [])}"
+        )
+
+        turn_state = self.state_manager.state.turn_state
+        old_active = turn_state.active_agent
+        old_mode = turn_state.mode
+
+        turn_state.active_agent = input_args.get("active_agent")
+        turn_state.mode = input_args.get("mode", "dm_control")
+        turn_state.addressed_agents = input_args.get("addressed", [])
+        turn_state.turn_started_at = time.time()
+
+        logger.info(
+            f"[SET_TURN] Updated turn_state: {old_active!r} -> {turn_state.active_agent!r}, "
+            f"mode: {old_mode!r} -> {turn_state.mode!r}"
+        )
+
+        # Auto-save the state change
+        self.state_manager.save()
+        logger.info(
+            f"[SET_TURN] Saved to {self.state_manager.state_file} "
+            f"(manager_id={id(self.state_manager)})"
+        )
+
+        # Build informative response
+        if turn_state.active_agent:
+            return f"Turn set: active_agent={turn_state.active_agent}, mode={turn_state.mode}"
+        elif turn_state.mode == "free_form" and turn_state.addressed_agents:
+            return f"Turn set: free_form mode, addressed={turn_state.addressed_agents}"
+        else:
+            return f"Turn set: DM control mode (no agent will respond)"
 
 
 async def run_dm_agent() -> None:
