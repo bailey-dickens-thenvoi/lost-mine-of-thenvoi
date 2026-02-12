@@ -9,7 +9,7 @@ authors = [
     {name = "Lost Mine Team"}
 ]
 dependencies = [
-    "thenvoi-sdk[anthropic] @ git+https://github.com/thenvoi/thenvoi-sdk-python.git",
+    "thenvoi-sdk[anthropic] @ git+https://github.com/thenvoi/thenvoi-sdk-python.git@dev",
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",

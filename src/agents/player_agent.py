@@ -195,7 +195,7 @@ When the DM @mentions you for your turn:
 
 ## CRITICAL RULES
 
-1. **Use send_message tool** - You MUST use the send_message tool to communicate. Plain text won't reach the party.
+1. **Use thenvoi_send_message tool** - You MUST use the thenvoi_send_message tool to communicate. Plain text won't reach the party.
 2. **@mention recipients** - Always include who you're talking to in the mentions.
 3. **Don't roll dice** - The DM rolls ALL dice. Just declare what you're doing.
 4. **Stay in character** - You ARE this character. React naturally.

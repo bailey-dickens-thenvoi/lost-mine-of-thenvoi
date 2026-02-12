@@ -43,7 +43,7 @@ DM_SYSTEM_PROMPT = """You are the Dungeon Master for a D&D 5th Edition campaign:
 - Keep the game moving forward at a good pace
 
 ## CRITICAL: Communication Rules
-1. You MUST use the send_message tool to communicate - your responses won't reach players otherwise
+1. You MUST use the thenvoi_send_message tool to communicate - your responses won't reach players otherwise
 2. Always @mention players when addressing them (include their name in the mentions array)
 3. Human players cannot roll dice - you MUST roll for them when they declare actions
 
@@ -236,6 +236,41 @@ class DMAdapter(AnthropicAdapter):
         # Custom tools schemas (Anthropic format)
         self._custom_tools = self._build_custom_tool_schemas()
 
+    @staticmethod
+    def _sanitize_history(history: list[dict]) -> list[dict]:
+        """Remove orphaned tool_use blocks from history.
+
+        The Anthropic API requires every tool_use block to be followed by
+        a tool_result in the next message. Platform history from failed
+        attempts can contain stale tool_use without results.
+        """
+        sanitized = []
+        for i, msg in enumerate(history):
+            content = msg.get("content")
+            if isinstance(content, list):
+                has_tool_use = any(
+                    isinstance(block, dict) and block.get("type") == "tool_use"
+                    for block in content
+                )
+                if has_tool_use:
+                    # Check if next message has matching tool_results
+                    next_msg = history[i + 1] if i + 1 < len(history) else None
+                    next_content = next_msg.get("content") if next_msg else None
+                    has_tool_result = (
+                        isinstance(next_content, list)
+                        and any(
+                            isinstance(block, dict) and block.get("type") == "tool_result"
+                            for block in next_content
+                        )
+                    )
+                    if not has_tool_result:
+                        logger.warning(
+                            f"Stripping orphaned tool_use message from history (index {i})"
+                        )
+                        continue
+            sanitized.append(msg)
+        return sanitized
+
     def _build_state_summary(self) -> str:
         """Build a summary of the current game state for the system prompt."""
         state = self.state_manager.state
@@ -405,8 +440,8 @@ Party Status:
         # Initialize history for this room
         if is_session_bootstrap:
             if history:
-                self._message_history[room_id] = list(history)
-                logger.info(f"Room {room_id}: Loaded {len(history)} historical messages")
+                self._message_history[room_id] = self._sanitize_history(list(history))
+                logger.info(f"Room {room_id}: Loaded {len(self._message_history[room_id])} historical messages")
             else:
                 self._message_history[room_id] = []
         elif room_id not in self._message_history:
@@ -492,16 +527,19 @@ Party Status:
 
             logger.debug(f"Executing tool: {tool_name} with input: {tool_input}")
 
-            # Report tool call if enabled
+            # Report tool call if enabled (best-effort, non-fatal)
             if self.enable_execution_reporting:
-                await tools.send_event(
-                    content=json.dumps({
-                        "name": tool_name,
-                        "args": tool_input,
-                        "tool_call_id": tool_use_id,
-                    }),
-                    message_type="tool_call",
-                )
+                try:
+                    await tools.send_event(
+                        content=json.dumps({
+                            "name": tool_name,
+                            "args": tool_input,
+                            "tool_call_id": tool_use_id,
+                        }),
+                        message_type="tool_call",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to report tool_call event: {e}")
 
             # Execute tool
             try:
@@ -523,16 +561,19 @@ Party Status:
                 is_error = True
                 logger.error(f"Tool {tool_name} failed: {e}")
 
-            # Report tool result
+            # Report tool result (best-effort, non-fatal)
             if self.enable_execution_reporting:
-                await tools.send_event(
-                    content=json.dumps({
-                        "name": tool_name,
-                        "output": result_str,
-                        "tool_call_id": tool_use_id,
-                    }),
-                    message_type="tool_result",
-                )
+                try:
+                    await tools.send_event(
+                        content=json.dumps({
+                            "name": tool_name,
+                            "output": result_str,
+                            "tool_call_id": tool_use_id,
+                        }),
+                        message_type="tool_result",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to report tool_result event: {e}")
 
             tool_results.append({
                 "type": "tool_result",

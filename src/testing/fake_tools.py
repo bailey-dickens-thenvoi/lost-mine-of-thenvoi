@@ -83,12 +83,18 @@ class FakeAgentTools:
         logger.debug(f"FakeTools: send_message({content[:50]}..., mentions={mentions})")
         return {"success": True, "message_id": f"msg_{len(self.sent_messages)}"}
 
-    async def send_event(self, content: str, message_type: str = "thought") -> dict[str, Any]:
+    async def send_event(
+        self,
+        content: str,
+        message_type: str = "thought",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Record a sent event.
 
         Args:
             content: Event content
             message_type: Event type (thought, tool_call, tool_result, error, task)
+            metadata: Optional metadata dict
 
         Returns:
             Success response
@@ -133,7 +139,7 @@ class FakeAgentTools:
         self.participants = [p for p in self.participants if p["name"] != name]
         return {"success": True}
 
-    async def lookup_peers(self, page: int = 1, page_size: int = 10) -> list[dict[str, str]]:
+    async def lookup_peers(self, page: int = 1, page_size: int = 50) -> dict[str, Any]:
         """Get available peers.
 
         Args:
@@ -141,11 +147,11 @@ class FakeAgentTools:
             page_size: Results per page
 
         Returns:
-            List of peer info
+            Dict with peers data
         """
         start = (page - 1) * page_size
         end = start + page_size
-        return self.peers[start:end]
+        return {"data": self.peers[start:end], "page": page, "page_size": page_size}
 
     async def create_chatroom(self, task_id: str | None = None) -> dict[str, Any]:
         """Record creating a chatroom.
@@ -173,32 +179,32 @@ class FakeAgentTools:
         self.tool_calls.append({"name": tool_name, "input": tool_input})
         logger.debug(f"FakeTools: execute_tool_call({tool_name}, {tool_input})")
 
-        # Return mock results for common platform tools
-        if tool_name == "send_message":
+        # Return mock results for common platform tools (thenvoi_ prefixed)
+        if tool_name == "thenvoi_send_message":
             return await self.send_message(
                 tool_input.get("content", ""),
                 tool_input.get("mentions", []),
             )
-        elif tool_name == "send_event":
+        elif tool_name == "thenvoi_send_event":
             return await self.send_event(
                 tool_input.get("content", ""),
                 tool_input.get("message_type", "thought"),
             )
-        elif tool_name == "get_participants":
+        elif tool_name == "thenvoi_get_participants":
             return await self.get_participants()
-        elif tool_name == "add_participant":
+        elif tool_name == "thenvoi_add_participant":
             return await self.add_participant(
                 tool_input.get("name", ""),
                 tool_input.get("role", "member"),
             )
-        elif tool_name == "remove_participant":
+        elif tool_name == "thenvoi_remove_participant":
             return await self.remove_participant(tool_input.get("name", ""))
-        elif tool_name == "lookup_peers":
+        elif tool_name == "thenvoi_lookup_peers":
             return await self.lookup_peers(
                 tool_input.get("page", 1),
-                tool_input.get("page_size", 10),
+                tool_input.get("page_size", 50),
             )
-        elif tool_name == "create_chatroom":
+        elif tool_name == "thenvoi_create_chatroom":
             return await self.create_chatroom(tool_input.get("task_id"))
 
         # Unknown tool - return generic success
@@ -212,7 +218,7 @@ class FakeAgentTools:
         """
         return [
             {
-                "name": "send_message",
+                "name": "thenvoi_send_message",
                 "description": "Send a message to the chat room",
                 "input_schema": {
                     "type": "object",
@@ -224,7 +230,7 @@ class FakeAgentTools:
                 },
             },
             {
-                "name": "send_event",
+                "name": "thenvoi_send_event",
                 "description": "Send an internal event",
                 "input_schema": {
                     "type": "object",
@@ -236,7 +242,7 @@ class FakeAgentTools:
                 },
             },
             {
-                "name": "get_participants",
+                "name": "thenvoi_get_participants",
                 "description": "Get room participants",
                 "input_schema": {"type": "object", "properties": {}},
             },

@@ -38,10 +38,10 @@ class TestSettings:
         with patch.dict(os.environ, {}, clear=True):
             # Clear cache to get fresh settings
             get_settings.cache_clear()
-            settings = Settings()
+            settings = Settings(_env_file=None)
 
-            assert settings.thenvoi_rest_url == "https://api.thenvoi.com"
-            assert settings.thenvoi_ws_url == "wss://api.thenvoi.com/ws"
+            assert settings.thenvoi_rest_url == "https://app.thenvoi.com"
+            assert settings.thenvoi_ws_url == "wss://app.thenvoi.com/api/v1/socket/websocket"
 
     def test_url_trailing_slash_removed(self):
         """URLs should have trailing slashes removed."""
@@ -96,7 +96,7 @@ class TestSettings:
     def test_validate_required_credentials_all_missing(self):
         """Should report all missing credentials when none are configured."""
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             missing = settings.validate_required_credentials()
 
             assert "dm" in missing
@@ -114,7 +114,7 @@ class TestSettings:
             },
             clear=True,
         ):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             missing = settings.validate_required_credentials()
 
             assert "dm" not in missing
@@ -132,7 +132,7 @@ class TestSettings:
             },
             clear=True,
         ):
-            settings = Settings()
+            settings = Settings(_env_file=None)
 
             # Only check DM
             missing = settings.validate_required_credentials(["dm"])
@@ -145,11 +145,11 @@ class TestSettings:
     def test_is_anthropic_configured(self):
         """Should correctly detect Anthropic configuration."""
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert not settings.is_anthropic_configured()
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-test"}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.is_anthropic_configured()
 
 

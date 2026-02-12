@@ -64,7 +64,7 @@ The DM will send messages in this format:
 
 ## Response Format
 
-Always use the send_message tool to respond. Include your character name in the message naturally or through action descriptions.
+Always use the thenvoi_send_message tool to respond. Include your character name in the message naturally or through action descriptions.
 
 ## Example
 
@@ -97,7 +97,7 @@ If the DM's instructions are missing required tags or are confusing:
 
 ## CRITICAL
 
-You MUST use the send_message tool to communicate. Plain text responses won't reach players.
+You MUST use the thenvoi_send_message tool to communicate. Plain text responses won't reach players.
 Always @mention the person or people you're responding to.
 """
 
